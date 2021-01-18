@@ -1,0 +1,213 @@
+# rm(list = ls())
+# #setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+# 
+# library(readxl)#
+# library(MGLM)
+# library(plyr)
+# library(vegan)
+# library(Rcpp)
+# library(MASS)
+# library(ade4)
+# library(Matrix)
+# library(graphics)
+# 
+# sourceCpp("src/chisq_stat.cpp")
+# sourceCpp("src/dist2mat.cpp")
+# sourceCpp("src/ugee_cov_cate_cont_exp2.cpp")
+# 
+# 
+# ###############################################
+# ### Step 1: read in data (OTU + meta data) ####
+# ###############################################
+# 
+# MASTER_allcov = read_excel("~/Dropbox/lab/FRM/MASTERdata_Sonja.xlsx")
+# MASTER_count = read_excel("~/Dropbox/lab/FRM/MASTER_count.xlsx")
+# 
+# 
+# ############## DATA PREPROCESSING #############
+# MASTER_count_all = MASTER_count[ ,c(1, 3:ncol(MASTER_count))]
+# MASTER_allcov.new = MASTER_allcov[MASTER_allcov$ID %in% MASTER_count$ID,]
+# MASTER_COV =  MASTER_allcov.new[names(MASTER_allcov.new) %in% c("ID" ,"Diagnosis" ,"age","Male1_Female2")]
+# OTU_COV = merge(MASTER_COV, MASTER_count_all, by="ID")
+# ####### No Female in AUD ######
+# OTU_COV$Male1_Female2[OTU_COV$Diagnosis=="AUD"][c(5,10)] = 2
+# 
+# 
+# ############## Obtain Beta-div from OTU ########
+# 
+# ### 1. Normalizing the count data into probability data
+# raw.OTU.datframe = OTU_COV[,-c(1:4)]
+# Yi = as.matrix(raw.OTU.datframe)
+# dat = Yi / rowSums(Yi)
+# 
+# ### 2. compute beta-div for the OTU relative abundance ###
+# d = vegdist(
+#   dat,
+#   method = "bray",
+#   binary = FALSE,
+#   diag = FALSE,
+#   upper = FALSE,
+#   na.rm = FALSE
+# )
+# d.mat = dist2mat(d, 128)
+# 
+# ## sanity check ##
+# stopifnot(isSymmetric(d.mat)==T)
+# stopifnot(sum(diag(d.mat))==0)
+# 
+# 
+# ###############################################
+# ### Step 2: Defining linear contrast for HT ###
+# ###############################################
+# 
+# ### eg: ### Main factor: 3 grps ###
+# ######### Cov: one Cate. + one Cont. covariate 
+# 
+# ### Hypotheses for the Main factor:
+# beta0_matrix = matrix(c(1, 0, 0, 0, 0, 0, 0, 0, 0), byrow=T, nrow = 1)
+# beta22_matrix = matrix(c(0, 1, 0, 0, 0, 0, 0, 0, 0), byrow=T, nrow = 1)
+# beta33_matrix = matrix(c(0, 0, 1, 0, 0, 0, 0, 0, 0), byrow=T, nrow = 1)
+# beta12_matrix = matrix(c(0, 0, 0, 1, 0, 0, 0, 0, 0), byrow=T, nrow = 1)
+# beta13_matrix = matrix(c(0, 0, 0, 0, 1, 0, 0, 0, 0), byrow=T, nrow = 1)
+# beta23_matrix = matrix(c(0, 0, 0, 0, 0, 1, 0, 0, 0), byrow=T, nrow = 1)
+# 
+# within_matrix = matrix(c(0, 1, 0, 0, 0, 0, 0, 0, 0, 
+#                          0, 0, 1, 0, 0, 0, 0, 0, 0), byrow=T, nrow = 2)
+# between_matrix_1 = matrix(c(0, 0, 0, 1, -1, 0, 0, 0, 0,
+#                             0, 0, 0, 1, 0, -1, 0, 0, 0), byrow=T, nrow = 2)
+# between_matrix_2 = matrix(c(0, 0, 0, 1, 0, 0, 0, 0, 0), byrow=T, nrow = 1)
+# 
+# ### Hypothesis for the Cov:
+# cov_matrix1 = matrix(c(0, 0, 0, 0, 0, 0, 1, 0, 0), byrow=T, nrow = 1)
+# cov_matrix2 = matrix(c(0, 0, 0, 0, 0, 0, 0, 1, 0), byrow=T, nrow = 1)
+# cov_matrix12 = matrix(c(0, 0, 0, 0, 0, 0, 1, 0, 0,
+#                         0, 0, 0, 0, 0, 0, 0, 1, 0), byrow=T, nrow = 2)
+# cov_matrix3 = matrix(c(0, 0, 0, 0, 0, 0, 0, 0, 1), byrow=T, nrow = 1)
+# 
+# 
+# ###############################################
+# ### Step 3: Model fitting using UGEE algorm. ##
+# ###############################################
+# 
+# ## defining Main factor + Covs
+# 
+# ### 1. Categorical ones, keep form, make levels = 1,2,...
+# group3 = factor(OTU_COV$Diagnosis)
+# cate.covariate = OTU_COV$Male1_Female2
+# 
+# ### 2. Continuous ones, transform into pairwise distances g()
+# cont.covariate = OTU_COV$age
+# dat.cont.cov = as.matrix(na.omit(cont.covariate))
+# ### compute euclidean distance g() for the cov ###
+# gfun.cov = vegdist(
+#   dat.cont.cov,
+#   method = "euclidean",
+#   binary = FALSE,
+#   diag = FALSE,
+#   upper = FALSE,
+#   na.rm = FALSE
+# )
+# gfun.cov.mat = dist2mat(gfun.cov, 128)
+# 
+# ## sanity check ##
+# stopifnot(isSymmetric(gfun.cov.mat)==T)
+# stopifnot(sum(diag(gfun.cov.mat))==0)
+# 
+# 
+# ### 3. UGEE fit with "ugeecov_cate_cont_exp2" ###
+# X = group3
+# W = cate.covariate
+# gZij = gfun.cov.mat
+# 
+# fit.ugee = ugeecov_cate_cont_exp2(d.mat, X, W, gZij)
+# 
+# 
+# ###############################################
+# ### Step 4: Report results in Table for Wald ##
+# ###############################################
+# 
+# theta.est = fit.ugee$theta
+# Var.est = diag(fit.ugee$Sigma_theta)
+# SE.est = sqrt(Var.est)
+# 
+# ### Wald stats ###
+# beta0_chisq = chisq_stat(beta0_matrix, theta.est, fit.ugee$Sigma_theta)
+# beta22_chisq = chisq_stat(beta22_matrix, theta.est, fit.ugee$Sigma_theta)
+# beta33_chisq = chisq_stat(beta33_matrix, theta.est, fit.ugee$Sigma_theta)
+# beta12_chisq = chisq_stat(beta12_matrix, theta.est, fit.ugee$Sigma_theta)
+# beta13_chisq = chisq_stat(beta13_matrix, theta.est, fit.ugee$Sigma_theta)
+# beta23_chisq = chisq_stat(beta23_matrix, theta.est, fit.ugee$Sigma_theta)
+# 
+# within_chisq = chisq_stat(within_matrix, theta.est, fit.ugee$Sigma_theta)
+# between_chisq_1 = chisq_stat(between_matrix_1, theta.est, fit.ugee$Sigma_theta)
+# between_chisq_2 = chisq_stat(between_matrix_2, theta.est, fit.ugee$Sigma_theta)
+# 
+# 
+# cov_chisq1 = chisq_stat(cov_matrix1, theta.est, fit.ugee$Sigma_theta)
+# cov_chisq2 = chisq_stat(cov_matrix2, theta.est, fit.ugee$Sigma_theta)
+# cov_chisq12 = chisq_stat(cov_matrix12, theta.est, fit.ugee$Sigma_theta)
+# cov_chisq3 = chisq_stat(cov_matrix3, theta.est, fit.ugee$Sigma_theta)
+# 
+# Wald = as.matrix(round(c(beta0_chisq,
+#                          beta22_chisq,
+#                          beta33_chisq,
+#                          beta12_chisq,
+#                          beta13_chisq,
+#                          beta23_chisq,
+#                          
+#                          cov_chisq1,
+#                          cov_chisq2,
+#                          cov_chisq3, 
+#                          
+#                          within_chisq,
+#                          between_chisq_1,
+#                          between_chisq_2,
+#                          cov_chisq12
+#                          ),6))
+# 
+# ### p-values from Wald 
+# p.val.Wald = as.matrix(round(c(1-pchisq(mean(beta0_chisq), nrow(beta0_matrix)),
+#                   1-pchisq(mean(beta22_chisq), nrow(beta22_matrix)),
+#                   1-pchisq(mean(beta33_chisq), nrow(beta33_matrix)),
+#                   1-pchisq(mean(beta12_chisq), nrow(beta12_matrix)),
+#                   1-pchisq(mean(beta13_chisq), nrow(beta13_matrix)),
+#                   1-pchisq(mean(beta23_chisq), nrow(beta23_matrix)),
+#                   
+#                   1-pchisq(mean(cov_chisq1), nrow(cov_matrix1)),
+#                   1-pchisq(mean(cov_chisq2), nrow(cov_matrix2)),
+#                   1-pchisq(mean(cov_chisq3), nrow(cov_matrix3)),
+#                   
+#                   
+#                   1-pchisq(mean(within_chisq), nrow(within_matrix)),
+#                   1-pchisq(mean(between_chisq_1), nrow(between_matrix_1)),
+#                   1-pchisq(mean(between_chisq_2), nrow(between_matrix_2)),
+#                   1-pchisq(mean(cov_chisq12), nrow(cov_matrix12))
+#                   
+#                   ),6))
+# 
+# ###### Para.table #####
+# Tab1 = as.data.frame(cbind(theta.est, SE.est, 
+#                            Wald[1:9], 
+#                            p.val.Wald[1:9]))
+# names(Tab1) = c("theta.est", "SE.est", "Wald", "Wald.p")
+# rownames(Tab1) = c("beta0",
+#                      "beta22",
+#                      "beta33",
+#                      "beta12",
+#                      "beta13",
+#                      "beta23",
+#                      "cov1",
+#                      "cov2",
+#                      "cov3")
+# Tab1
+# 
+# ###### Obnimas.table #####
+# Tab2 = as.data.frame(cbind(Wald[10:13], 
+#                            p.val.Wald[10:13]))
+# names(Tab2) = c("Wald", "Wald.p")
+# rownames(Tab2) = c("within_chisq",
+#                    "between_chisq_1",
+#                    "between_chisq_2",
+#                    "cov_chisq12")
+# Tab2
+# 

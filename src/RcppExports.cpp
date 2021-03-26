@@ -46,11 +46,28 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// ugeeSym_cont_cate_cov
+SEXP ugeeSym_cont_cate_cov(NumericMatrix ymat, NumericMatrix xmat, DataFrame cat, List cts, double tol, int maxiter);
+RcppExport SEXP _MicrobiomeFRM_ugeeSym_cont_cate_cov(SEXP ymatSEXP, SEXP xmatSEXP, SEXP catSEXP, SEXP ctsSEXP, SEXP tolSEXP, SEXP maxiterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type ymat(ymatSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type xmat(xmatSEXP);
+    Rcpp::traits::input_parameter< DataFrame >::type cat(catSEXP);
+    Rcpp::traits::input_parameter< List >::type cts(ctsSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxiter(maxiterSEXP);
+    rcpp_result_gen = Rcpp::wrap(ugeeSym_cont_cate_cov(ymat, xmat, cat, cts, tol, maxiter));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_MicrobiomeFRM_chisq_stat", (DL_FUNC) &_MicrobiomeFRM_chisq_stat, 3},
     {"_MicrobiomeFRM_dist2mat", (DL_FUNC) &_MicrobiomeFRM_dist2mat, 2},
     {"_MicrobiomeFRM_ugeecov_cate_cont_exp2_new", (DL_FUNC) &_MicrobiomeFRM_ugeecov_cate_cont_exp2_new, 5},
+    {"_MicrobiomeFRM_ugeeSym_cont_cate_cov", (DL_FUNC) &_MicrobiomeFRM_ugeeSym_cont_cate_cov, 6},
     {NULL, NULL, 0}
 };
 

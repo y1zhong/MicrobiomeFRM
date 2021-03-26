@@ -1,0 +1,265 @@
+---
+title: "paper2"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{paper2}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+devtools::load_all("~/Dropbox (University of Michigan)/lab/FRM/MicrobiomeFRM")
+#library(MicrobiomeFRM)
+library(matrixStats)
+library(plyr)
+library(vegan)
+library(Rcpp)
+library(MASS)
+library(ade4)
+library(Matrix)
+library(graphics)
+```
+
+
+```{r}
+
+############# USE THESE FOR ANALYSIS ########
+data(merge.dat.complete)
+
+names(merge.dat.complete)[1:4]
+names(merge.dat.complete)[c(12135,12136)]
+
+R.OTU.dat = merge.dat.complete[,c(4:12134)]
+Cov.dat = merge.dat.complete[,c(3,12135:dim(merge.dat.complete)[2])]
+names(Cov.dat)
+
+```
+
+```{r}
+### 1. use R. OTU to compute beta-div ###
+library(vegan)
+d = vegdist(
+  R.OTU.dat,
+  method = "bray",
+  binary = FALSE,
+  diag = FALSE,
+  upper = FALSE,
+  na.rm = FALSE
+)
+d.mat <- as.matrix(d,128)
+```
+
+```{r}
+### 1.5. Transform Cont. Explanatory Vars ###
+
+Cov.dat$psstot
+psstot.scale = c(scale(Cov.dat$psstot))
+### HERE, NOT YET 05/11
+# Cov.dat$bsiatot
+# Cov.dat$sdw_tot
+# Cov.dat$cdrs10_t
+# Cov.dat$psstot
+# Cov.dat$phycomp
+# Cov.dat$mencomp
+```
+
+```{r}
+### 2. compute yi-yj for the clinical outcome ###
+psstot.pair.Diff = outer(psstot.scale , psstot.scale , FUN = "-")
+mean(psstot.pair.Diff);sd(psstot.pair.Diff);range(psstot.pair.Diff)
+
+### 3. compute zi-zj for the cont. cov ###
+shannon.scale = c(scale(Cov.dat$shannon))
+age.scale = c(scale(Cov.dat$agevisit))
+
+shannon.pair.Diff = outer(shannon.scale , shannon.scale , FUN = "-")
+mean(shannon.pair.Diff);sd(shannon.pair.Diff);range(shannon.pair.Diff)
+
+age.pair.Diff = outer(age.scale , age.scale , FUN = "-")
+mean(age.pair.Diff);sd(age.pair.Diff);range(age.pair.Diff)
+
+### 3. Transform Cate. Cov ###
+#change to factor yuan
+gender = as.numeric(as.factor(Cov.dat$gender)) # Female1 Male2
+
+```
+
+```{r}
+gp <- data.frame(gender)
+
+cts_l <- list(shannon.pair.Diff, age.pair.Diff)
+#devtools::load_all("~/Dropbox (University of Michigan)/lab/FRM/MicrobiomeFRM")
+
+
+psst.FRM = ugeeSym_cont_cate_cov(psstot.pair.Diff,
+                                   d.mat,
+                                   gp,cts_l
+                                   )
+# psst.FRM = ugeeSym_cont_cate_cov(psstot.pair.Diff,
+#                                    d.mat,
+#                                    shannon.pair.Diff,
+#                                    age.pair.Diff,
+#                                    gender)
+```
+
+```{r}
+theta.truth = psst.FRM$theta
+Sigma_theta = psst.FRM$Sigma_theta
+Sigma_theta.truth = diag(Sigma_theta)
+theta.truth
+```
+
+```{r}
+beta_div_matrix = matrix(c(1, 0, 0, 0), byrow=T, nrow = 1)
+alpha_div_matrix = matrix(c(0, 1, 0, 0), byrow=T, nrow = 1)
+age.cov_matrix = matrix(c(0, 0, 1, 0), byrow=T, nrow = 1)
+gender.cov_matrix = matrix(c(0, 0, 0, 1), byrow=T, nrow = 1)
+
+(beta_div_chisq=chisq_stat(beta_div_matrix, theta.truth, Sigma_theta))
+(p.beta_div = 1-pchisq(beta_div_chisq, nrow(beta_div_matrix)))
+
+(alpha_div_chisq=chisq_stat(alpha_div_matrix, theta.truth, Sigma_theta))
+(p.alpha_div = 1-pchisq(alpha_div_chisq, nrow(alpha_div_matrix)))
+
+(age.cov_chisq=chisq_stat(age.cov_matrix, theta.truth, Sigma_theta))
+(p.age.cov = 1-pchisq(age.cov_chisq, nrow(age.cov_matrix)))
+
+(gender.cov_chisq=chisq_stat(gender.cov_matrix, theta.truth, Sigma_theta))
+(p.gender.cov = 1-pchisq(gender.cov_chisq, nrow(gender.cov_matrix)))
+
+```
+
+```{r}
+####### Results #######
+coef.out = c(round(theta.truth,6))
+sd.out = c(round(sqrt(Sigma_theta.truth),10))
+Wald = c(beta_div_chisq, alpha_div_chisq, 
+         age.cov_chisq, gender.cov_chisq)
+p = c(p.beta_div, p.alpha_div, 
+      p.age.cov, p.gender.cov)
+
+psst.results = as.data.frame(cbind(coef.out, sd.out, Wald, p))
+rownames(psst.results) = c("Beta-div", "Shannon", "age", "gender")
+psst.results
+
+gender.matrix = outer(gender, gender, "+")
+table(gender.matrix)
+gender.matrix.hetero = ifelse(gender.matrix == 4, 1, 0)
+
+### fitted:
+psst.fitted = theta.truth[1] * d.mat + 
+  theta.truth[2] * shannon.pair.Diff +
+  theta.truth[3] * age.pair.Diff +
+  theta.truth[4] * gender.matrix.hetero
+
+Beta_div_up = d.mat[upper.tri(d.mat)]
+psstot_upper = psstot.pair.Diff[upper.tri(psstot.pair.Diff)]
+psstot_lower = psstot.pair.Diff[lower.tri(psstot.pair.Diff)]
+age_upper = age.pair.Diff[upper.tri(age.pair.Diff)]
+shannon_upper = shannon.pair.Diff[upper.tri(shannon.pair.Diff)]
+gender_upper = gender.matrix.hetero[upper.tri(gender.matrix.hetero)]
+
+mean(psstot_upper);sd(psstot_upper)
+mean(psstot_lower);sd(psstot_lower)
+```
+
+```{r}
+########################################
+##### Outcome 2: cesd10 ###################
+########################################
+Cov.dat$cesdt10
+hist(Cov.dat$cesdt10)
+Cov.dat$cesdt10.Binary = ifelse(Cov.dat$cesdt10 > median(Cov.dat$cesdt10), 1, 0)
+
+###############################################################
+## 1. Using Real.Binary.outcome.genera.trsf to generate y.mat # 
+#     with NA indicating yi = yj
+## 2. Using ugeeBinarySymReal to deal with NA in y.mat ##
+#########################################################
+#sourceCpp("Truth_binary.symFRM_cont.cate.cpp")
+
+clinical.outcome = ifelse(Cov.dat$cesdt10 > median(Cov.dat$cesdt10), 1, 0)
+#clinical.outcome = ifelse(Cov.dat$cesdt10 > 16, 1, 0)
+table(clinical.outcome)
+```
+
+```{r}
+### 1. compute yi-yj for the clinical outcome ###
+cesdt10.Binary.Diff = outer(clinical.outcome , clinical.outcome , FUN = "-")
+
+cesdt10.Binary.Diff2 = ifelse(cesdt10.Binary.Diff==0, NA, cesdt10.Binary.Diff)
+cesdt10.Binary.Diff2 = ifelse(cesdt10.Binary.Diff2==-1, 0, cesdt10.Binary.Diff2)
+
+diag(cesdt10.Binary.Diff2) = 0
+## sanity check ##
+#stopifnot(isSymmetric(gfun.out.mat)==T)
+stopifnot(sum(diag(cesdt10.Binary.Diff2))==0)
+
+table(cesdt10.Binary.Diff2)
+
+### 2. UGEE fit ###
+real_n = as.numeric(table(cesdt10.Binary.Diff2))
+n1 = sqrt(real_n[1]); n2 = sqrt(real_n[2])
+n1_n2 = mean(c(n1,n2))
+effective_n = (1+sqrt(1+8*n1*n2))/2
+
+# Clinical outcome: cesdt10.Binary.Diff2
+# Beta-div: d.mat
+# Alpha-div: shannon.pair.Diff
+# cov1: age.pair.Diff
+# cov2: gender
+gen <- data.frame(gender)
+cts_l <- list(shannon.pair.Diff, age.pair.Diff)
+devtools::load_all()
+cesd.FRM = ugeeBinarySymReal(n1,n2,n1_n2,effective_n,
+                             cesdt10.Binary.Diff2, ## outcome Diff
+                             d.mat, # Main effect of Beta-div
+                             cts_l,
+                             gen)
+
+theta.truth = cesd.FRM$theta
+Sigma_theta = cesd.FRM$Sigma_theta
+Sigma_theta.truth = diag(Sigma_theta)
+
+theta.truth
+```
+
+```{r}
+beta_div_matrix = matrix(c(1, 0, 0, 0), byrow=T, nrow = 1)
+alpha_div_matrix = matrix(c(0, 1, 0, 0), byrow=T, nrow = 1)
+age.cov_matrix = matrix(c(0, 0, 1, 0), byrow=T, nrow = 1)
+gender.cov_matrix = matrix(c(0, 0, 0, 1), byrow=T, nrow = 1)
+
+(beta_div_chisq=chisq_stat(beta_div_matrix, theta.truth, Sigma_theta))
+(p.beta_div = 1-pchisq(beta_div_chisq, nrow(beta_div_matrix)))
+
+(alpha_div_chisq=chisq_stat(alpha_div_matrix, theta.truth, Sigma_theta))
+(p.alpha_div = 1-pchisq(alpha_div_chisq, nrow(alpha_div_matrix)))
+
+(age.cov_chisq=chisq_stat(age.cov_matrix, theta.truth, Sigma_theta))
+(p.age.cov = 1-pchisq(age.cov_chisq, nrow(age.cov_matrix)))
+
+(gender.cov_chisq=chisq_stat(gender.cov_matrix, theta.truth, Sigma_theta))
+(p.gender.cov = 1-pchisq(gender.cov_chisq, nrow(gender.cov_matrix)))
+
+
+####### Results #######
+coef.out = c(round(theta.truth,6))
+sd.out = c(round(sqrt(Sigma_theta.truth),10))
+Wald = c(beta_div_chisq, alpha_div_chisq, 
+         age.cov_chisq, gender.cov_chisq)
+p = c(p.beta_div, p.alpha_div, 
+      p.age.cov, p.gender.cov)
+
+cesd.results = as.data.frame(cbind(coef.out, sd.out, Wald, p))
+rownames(cesd.results) = c("Beta-div", "Shannon", "age", "gender")
+cesd.results
+```
+

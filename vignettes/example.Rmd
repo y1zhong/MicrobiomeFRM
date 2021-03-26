@@ -9,8 +9,8 @@ vignette: >
 
 
 ```{r setup}
-devtools::load_all(".")
-library(MicrobiomeFRM)
+devtools::load_all("~/Dropbox (University of Michigan)/lab/FRM/MicrobiomeFRM")
+#library(MicrobiomeFRM)
 #library(readxl)#
 library(MGLM)
 library(plyr)

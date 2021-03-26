@@ -13,3 +13,7 @@ ugeecov_cate_cont_exp2_new <- function(dmatY, cat, cts, tol = 1e-3, maxiter = 25
     .Call(`_MicrobiomeFRM_ugeecov_cate_cont_exp2_new`, dmatY, cat, cts, tol, maxiter)
 }
 
+ugeeSym_cont_cate_cov <- function(ymat, xmat, cat, cts, tol = 1e-3, maxiter = 25L) {
+    .Call(`_MicrobiomeFRM_ugeeSym_cont_cate_cov`, ymat, xmat, cat, cts, tol, maxiter)
+}
+

@@ -217,12 +217,12 @@ effective_n = (1+sqrt(1+8*n1*n2))/2
 # cov2: gender
 gen <- data.frame(gender)
 cts_l <- list(shannon.pair.Diff, age.pair.Diff)
-devtools::load_all()
+#devtools::load_all("~/Dropbox (University of Michigan)/lab/FRM/MicrobiomeFRM")
 cesd.FRM = ugeeBinarySymReal(n1,n2,n1_n2,effective_n,
                              cesdt10.Binary.Diff2, ## outcome Diff
                              d.mat, # Main effect of Beta-div
-                             cts_l,
-                             gen)
+                             gen,
+                             cts_l)
 
 theta.truth = cesd.FRM$theta
 Sigma_theta = cesd.FRM$Sigma_theta
